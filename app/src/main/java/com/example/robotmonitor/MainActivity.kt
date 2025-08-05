@@ -45,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
     private lateinit var wifiSpeedAdapter: WifiSpeedAdapter
     private var lastWifiSpeeds: Array<DoubleArray>? = null
-    private val serverIp = "172.20.10.2" // Thống nhất IP với RobotViewModel
+    private val serverIp = "192.168.1.106" // Thống nhất IP với RobotViewModel
 
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
