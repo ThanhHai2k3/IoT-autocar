@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">RobotMonitor</string>
+    <string name="queue_size">Kích thước hàng đợi: %d</string>
+    <string name="queue_empty_warning">Hàng đợi rỗng, robot có thể dừng.</string>
+    <string name="status_connected">Trạng thái: Đã kết nối</string>
+    <string name="status_stopped">Trạng thái: Đã dừng</string>
+    <string name="error_stopping">Lỗi dừng robot: %s</string>
+    <string name="position">Vị trí: (%d, %d)</string>
+    <string name="heading">Hướng: %d°</string>
+    <string name="wifi_speed">WiFi RSSI: %s dBm</string>
+    <string name="max_wifi_speed">WiFi RSSI tối đa: %s dBm tại (%d, %d)</string>
+    <string name="distances">Khoảng cách: T:%s P:%s S:%s</string>
+    <string name="direction">Hướng di chuyển: %s</string>
+    <string name="status_finished">Trạng thái: Hoàn tất</string>
+    <string name="status_running">Trạng thái: Đang chạy</string>
+    <string name="queue_item">Vị trí: (%d, %d), Hướng: %d°</string>
 </resources>
