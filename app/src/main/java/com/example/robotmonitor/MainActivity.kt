@@ -1,5 +1,6 @@
 package com.example.robotmonitor
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -13,39 +14,172 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.NestedScrollView
+import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.android.volley.Request.Method
+import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.Volley
+import com.example.robotmonitor.RobotViewModel.RobotData
 import com.google.android.material.switchmaterial.SwitchMaterial
+import kotlin.collections.indices
 import kotlin.getValue
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var statusText: TextView
-    private lateinit var wifiSpeedGrid: RecyclerView
-    private lateinit var realtimeSwitch: SwitchMaterial
-    private lateinit var stopButton: Button
-    private lateinit var mapView: MapView
+    private val viewModel: RobotViewModel by viewModels()
     private lateinit var positionText: TextView
     private lateinit var headingText: TextView
+    private lateinit var wifiSpeedText: TextView
+    private lateinit var maxWifiSpeedText: TextView
     private lateinit var distanceText: TextView
     private lateinit var directionText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var mapView: MapView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var realtimeSwitch: SwitchMaterial
+    private lateinit var wifiSpeedGrid: RecyclerView
+    private lateinit var nestedScrollView: NestedScrollView
+    private lateinit var stopButton: Button
+    private lateinit var wifiSpeedAdapter: WifiSpeedAdapter
+    private var lastWifiSpeeds: Array<DoubleArray>? = null
+    private val serverIp = "172.20.10.2" // Thống nhất IP với RobotViewModel
 
+    @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // View Binding
-        statusText = findViewById(R.id.statusText)
-        wifiSpeedGrid = findViewById(R.id.wifiSpeedGrid)
-        realtimeSwitch = findViewById(R.id.realtimeSwitch)
-        stopButton = findViewById(R.id.stopButton)
-        mapView = findViewById(R.id.mapView)
+        // Khởi tạo các view
         positionText = findViewById(R.id.positionText)
         headingText = findViewById(R.id.headingText)
+        wifiSpeedText = findViewById(R.id.wifiSpeedText)
+        maxWifiSpeedText = findViewById(R.id.maxWifiSpeedText)
         distanceText = findViewById(R.id.distanceText)
         directionText = findViewById(R.id.directionText)
+        statusText = findViewById(R.id.statusText)
+        mapView = findViewById(R.id.mapView)
+        progressBar = findViewById(R.id.progressBar)
+        realtimeSwitch = findViewById(R.id.realtimeSwitch)
+        wifiSpeedGrid = findViewById(R.id.wifiSpeedGrid)
+        nestedScrollView = findViewById(R.id.nestedScrollView)
+        stopButton = findViewById(R.id.stopButton)
+
+        // Thiết lập RecyclerView cho bảng RSSI
+        wifiSpeedAdapter = WifiSpeedAdapter()
+        wifiSpeedGrid.layoutManager = GridLayoutManager(this, 10)
+        wifiSpeedGrid.adapter = wifiSpeedAdapter
+
+        // Quan sát LiveData
+        viewModel.robotData.observe(this, Observer { data ->
+            updateUI(data)
+            stopButton.isEnabled = !data.isFinished
+        })
+        viewModel.error.observe(this, Observer { error ->
+            val scrollY = nestedScrollView.scrollY
+            statusText.text = error ?: "Status: Connected"
+            statusText.setTextColor(
+                if (error != null) getColor(android.R.color.holo_red_dark)
+                else getColor(android.R.color.holo_green_dark)
+            )
+            nestedScrollView.post { nestedScrollView.scrollTo(0, scrollY) }
+        })
+        viewModel.wifiSpeeds.observe(this, Observer { speeds ->
+            if (!areWifiSpeedsEqual(lastWifiSpeeds, speeds)) {
+                val scrollY = nestedScrollView.scrollY
+                val gridData = mutableListOf<WifiSpeedCell>()
+                var maxSpeed = -100.0
+                var maxX = 0
+                var maxY = 0
+                for (i in speeds.indices) {
+                    for (j in speeds[i].indices) {
+                        val speed = speeds[i][j]
+                        gridData.add(WifiSpeedCell(i, j, speed))
+                        if (speed > maxSpeed) {
+                            maxSpeed = speed
+                            maxX = j
+                            maxY = i
+                        }
+                    }
+                }
+                wifiSpeedAdapter.setMaxSpeedPosition(maxX, maxY)
+                wifiSpeedAdapter.submitList(gridData)
+                lastWifiSpeeds = speeds.map { it.copyOf() }.toTypedArray()
+                nestedScrollView.post { nestedScrollView.scrollTo(0, scrollY) }
+            }
+        })
+
+        // Xử lý Switch
+        realtimeSwitch.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                viewModel.startPolling()
+            } else {
+                viewModel.stopPolling()
+            }
+        }
+
+        // Xử lý sự kiện nhấn nút Stop
+        stopButton.setOnClickListener {
+            sendStopCommand()
+        }
+
+        // Bắt đầu polling
+        viewModel.startPolling()
+    }
+
+    private fun sendStopCommand() {
+        val queue = Volley.newRequestQueue(this)
+        val url = "http://$serverIp/command"
+        val request = object : StringRequest(
+            Method.POST, url,
+            { response ->
+                statusText.text = "Status: Stopped"
+                statusText.setTextColor(getColor(android.R.color.holo_green_dark))
+                stopButton.isEnabled = false
+            },
+            { error ->
+                statusText.text = "Error stopping robot: ${error.message}"
+                statusText.setTextColor(getColor(android.R.color.holo_red_dark))
+            }
+        ) {
+            override fun getParams(): Map<String, String> {
+                return mapOf("action" to "stop")
+            }
+        }
+        queue.add(request)
+    }
+
+    private fun updateUI(data: RobotData) {
+        val scrollY = nestedScrollView.scrollY
+        positionText.text = "Position: (${data.robotX}, ${data.robotY})"
+        headingText.text = "Heading: ${data.robotHeading}°"
+        wifiSpeedText.text = "WiFi RSSI: ${"%.1f".format(data.wifiSpeed)} dBm"
+        maxWifiSpeedText.text = "Max WiFi RSSI: ${"%.1f".format(data.maxWifiSpeed)} dBm at (${data.maxWifiSpeedX}, ${data.maxWifiSpeedY})"
+        distanceText.text = "Distances: L:${"%.1f".format(data.distanceLeft)} R:${"%.1f".format(data.distanceRight)} F:${"%.1f".format(data.distanceFront)}"
+        directionText.text = "Direction: ${data.direction}"
+        statusText.text = if (data.isFinished) "Status: Finished" else "Status: Running"
+        statusText.setTextColor(if (data.isFinished) getColor(android.R.color.holo_green_dark) else getColor(android.R.color.holo_blue_dark))
+        mapView.updateMap(data.grid, data.robotX, data.robotY, data.robotHeading, data.isFinished)
+        nestedScrollView.post { nestedScrollView.scrollTo(0, scrollY) }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        viewModel.stopPolling()
+    }
+
+    private fun areWifiSpeedsEqual(old: Array<DoubleArray>?, new: Array<DoubleArray>): Boolean {
+        if (old == null) return false
+        if (old.size != new.size) return false
+        for (i in old.indices) {
+            if (old[i].size != new[i].size) return false
+            for (j in old[i].indices) {
+                if (old[i][j] != new[i][j]) return false
+            }
+        }
+        return true
     }
 
     data class WifiSpeedCell(val row: Int, val col: Int, val speed: Double)
