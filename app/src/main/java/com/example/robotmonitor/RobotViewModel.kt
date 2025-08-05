@@ -32,7 +32,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val wifiSpeeds: LiveData<Array<DoubleArray>> get() = _wifiSpeeds
 
     private var pollingJob: Job? = null
-    private val serverUrl = "http://192.168.1.106/data" // Cần xác nhận IP ESP32
+    private val serverUrl = "http://10.173.12.63/data" // Cần xác nhận IP ESP32
 
     data class RobotData(
         val robotX: Int = 0,
